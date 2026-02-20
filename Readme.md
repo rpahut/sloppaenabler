@@ -2,7 +2,7 @@
 An automated frontend for the ElevenLabs text-to-dialogue API.
 
 A simple, single page frontend for editing, generating and playing back dialogues using ElevenLabs text-to-dialogue API.
-It is intended to convert YouTube chat messages containing dialogue into audio and play it back.
+It is intended to convert the text from YouTube chat messages containing dialogue into audio and play it back.
 ![](screenshot.jpg)
 ## Features
 - A queue for dialogue texts
@@ -41,4 +41,5 @@ or
 So long as the body of the dialogue follows a general structure shown above, and reconiseable aliases are configured for the speakers, the code should be able to identify the parts correctly. The names will be matched regardless of capitalization and minor spelling mistakes.
 
 If present, the first '@handle' at the beginning of the text will be used as the author name and displayed in the playback animation. Any @handles following it are ignored.
+
 
