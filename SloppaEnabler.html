@@ -47,7 +47,7 @@ body {
 .no-manual-resize {
 	resize: none;
 }
-.noise-treshold-number {
+.noise-threshold-number {
 	width: 7ch;
 }
 .scrollable-list-container {
@@ -150,8 +150,8 @@ body {
 					<label for="detectNoise">Detect noise</label>
 				</span>
 				<span title="Higher value = pass louder noise; default=680">
-					<input type="number" id="noiseTreshold" name="integer_number" step="1" min="0" max="" value="10" class="noise-treshold-number" onchange="config.onChangeNoiseTreshold(event)" />
-					<label for="noiseTreshold">treshold</label>
+					<input type="number" id="noiseThreshold" name="integer_number" step="1" min="0" max="" value="10" class="noise-threshold-number" onchange="config.onChangeNoiseTreshold(event)" />
+					<label for="noiseThreshold">threshold</label>
 				</span>
 				<label id="noiseIndicator"></label>
 			</div>
@@ -294,7 +294,7 @@ const config = {
 		noiseDetection : {
 			enabled: false,
 			sampleDuration : 0.5, // seconds
-			treshold : document.getElementById('noiseTreshold').value // Max allowed amplitude/time at the beginning of the audio
+			threshold : document.getElementById('noiseThreshold').value // Max allowed amplitude/time at the beginning of the audio
 		},
 		generation: {
 			model: 'eleven_v3',
@@ -420,7 +420,7 @@ const config = {
 		this.saveInBrowser();
 	},
 	onChangeNoiseTreshold(event) {
-		this.data.noiseDetection.treshold = event.target.value;
+		this.data.noiseDetection.threshold = event.target.value;
 		this.saveInBrowser();
 		if(this.autoPlay) {
 			playback.triggerPlayback();
@@ -493,7 +493,7 @@ const config = {
 		document.getElementById('autoGenerate').checked = this.data.autoGenerate;
 		document.getElementById('autoPlay').checked = this.data.autoPlay;
 		document.getElementById('detectNoise').checked = this.data.noiseDetection.enabled;
-		document.getElementById('noiseTreshold').value = this.data.noiseDetection.treshold;
+		document.getElementById('noiseThreshold').value = this.data.noiseDetection.threshold;
 		//document.getElementById('modelsDropdown').value = this.data.generation.model;
 		document.getElementById('stabilityDropdown').value = this.data.generation.stability;
 		document.getElementById('formatDropdown').value = this.data.generation.audioFormat;
@@ -656,7 +656,7 @@ const textProcess = {
 		}
 
 		if(candidateNames.length == 1) {
-			return name;
+			return candidateNames[0];
 		}
 
 		// search from the end backwards
@@ -674,7 +674,7 @@ const textProcess = {
 			}
 			startPointer -= 1;
 		}
-		if(matchMap.length == 1) {
+		if(matchMap.size == 1) {
 			return matchMap.keys().next().value;
 		}
 
@@ -1078,7 +1078,7 @@ const playback = {
 					if(time > 0) {
 						const rate = Math.abs(channelData[s]) / time;
 						overallVolumeGrowthRate = Math.max(overallVolumeGrowthRate, rate);
-						if(overallVolumeGrowthRate > config.data.noiseDetection.treshold) {
+						if(overallVolumeGrowthRate > config.data.noiseDetection.threshold) {
 							console.log(`Detected volume growth: ${overallVolumeGrowthRate}`);
 							return false;
 						}
@@ -1097,7 +1097,19 @@ const playback = {
 		const audioUrl = URL.createObjectURL(currentAudioBlob);
 		dialoguePlayback.src = audioUrl;
 		dialoguePlayback.title = `slop-${Date.now()}.mp3`;
-		dialoguePlayback.timingData = responseObj.voice_segments;
+		if(responseObj.voice_segments) {
+			dialoguePlayback.timingData = responseObj.voice_segments;
+		}
+		else {
+			// one speaker = null voice_segments in response
+			dialoguePlayback.timingData = [
+				 {
+					"voice_id": config.findVoiceForName(conversation[0].name),
+					"start_time_seconds": 0,
+					"end_time_seconds": Number.MAX_VALUE
+				}
+			]
+		}
 		dialoguePlayback.conversation = conversation;
 
 		this.decodeAudio(currentAudioBlob).then(audioBuffer => {
@@ -1267,7 +1279,7 @@ const animation = {
 	animateAudioPlayback() {
 		const elem = document.getElementById('dialoguePlayback');
 
-		if(elem.paused && elem.currentTime == elem.duration) {
+		if(elem.paused && (elem.currentTime == 0 || elem.currentTime == elem.duration)) {
 			this.draw('', 0);
 			return;
 		}
