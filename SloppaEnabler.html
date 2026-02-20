@@ -1,0 +1,1305 @@
+<title>SloppaEnabler</title>
+<style>
+body {
+	margin: 0;
+	padding: 0;
+	display: flex;
+	height: 100vh;
+	flex-direction: column;
+}
+.main-panel {
+	display: flex;
+	width: 100%;
+}
+.panel {
+	height: 100%;
+	box-sizing: border-box;
+	padding: 1rem;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+}
+.panel-40 {
+	width: 40%;
+}
+.panel-60 {
+	width: 60%;
+}
+.horizontal-container {
+	display: flex;
+	align-items: center;
+}
+.half-width {
+	width: 50%;
+}
+.full-width {
+	width: 100%;
+}
+.audio-canvas {
+	width: 100%;
+	height: 25px;
+	border: 1px solid rgb(191, 191, 191);
+}
+.conversation-edit {
+	max-width: 100%;
+	max-height: 100%;
+}
+.no-manual-resize {
+	resize: none;
+}
+.noise-treshold-number {
+	width: 7ch;
+}
+.scrollable-list-container {
+	overflow-y: scroll;
+	cursor: grab;
+}
+.non-zero-height {
+	min-height: 20;
+}
+.history-container-limited {
+	max-height: 15%;
+}
+.animation-display {
+	width: 400px;
+	height: 400px;
+	border: 1px solid black;
+}
+</style>
+<body>
+	<div class="main-panel">
+		<div class="panel panel-40">
+			<textarea placeholder="Type or drop raw requests here to add to the queue" rows="5" cols="120" id="queueConversationEdit" onkeydown="queue.onConversationEditKeydown(event)" class="conversation-edit" ></textarea>
+			<button onclick="queue.acceptItem()" title="Ctrl+⏎">➕Add to queue</button>
+			<div>
+				Queue
+			</div>
+			<div class="scrollable-list-container">
+				<ul id="inputQueue" ondragstart="queue.onDrag(event)" ondragover="queue.onDrag(event)" ondragend="queue.onDrag(event)" class="non-zero-height">
+				</ul>
+			</div>
+			<div>
+				History
+			</div>
+			<div class="scrollable-list-container history-container-limited">
+				<ul id="inputHistory" ondragstart="queue.onDrag(event)" ondragover="queue.onDrag(event)" ondragend="queue.onDrag(event)" class="non-zero-height">
+				</ul>
+			</div>
+			<button onclick="queue.clearHistory()">🗑️</button>
+		</div>
+
+		<div class="panel panel-60" id="generateConversationPanel">
+			<div>
+				<button onclick="generate.processNextFromQueue()">▶ Take next from queue</button>
+				<span title="Take next automatically once playback is finished">
+					<input type="checkbox" id="autoQueue" onchange="config.onChangeAutoQueue(event)" />
+					<label for="autoQueue">Take automatically</label>
+				</span>
+			</div>
+			<textarea placeholder="Type in a raw conversation or edit the next one from the queue here" rows="5" cols="120" id="generateConversationEdit" onkeydown="generate.onGenerateConversationEditKeydown(event)" class="conversation-edit" ></textarea>
+<!--			<div class="horizontal-container">
+				<label for="modelsDropdown" class="half-width">Model</label>
+				<select id="modelsDropdown" title="eleven_v3 - advanced recent model&#10;eleven_multilingual_v2 - normal high quality&#10;eleven_turbo_v2_5 - decreased latency&#10;eleven_flash_v2_5 - fastest and cheapest" onchange="config.onChangeModel(event)">
+					<option value="eleven_v3">eleven_v3</option>
+					<option selected="true" value="eleven_multilingual_v2">eleven_multilingual_v2</option>
+					<option value="eleven_turbo_v2_5">eleven_turbo_v2_5</option>
+					<option value="eleven_flash_v2_5">eleven_flash_v2_5</option>
+				</select>
+			</div>-->
+			<div class="horizontal-container">
+				<label for="stabilityDropdown" class="half-width">Stability</label>
+				<select id="stabilityDropdown" title="Determines how stable the voice is and the randomness between each generation. Lower values introduce broader emotional range for the voice." onchange="config.onChangeStability(event)">
+					<option value="0">Creative (0)</option>
+					<option value="0.5" selected="true">Natural (0.5)</option>
+					<option value="1">Robust (1)</option>
+				</select>
+			</div>
+			<div class="horizontal-container">
+				<label for="formatDropdown" class="half-width">Audio format</label>
+				<select id="formatDropdown" onchange="config.onChangeFormat(event)">
+					<option value="mp3_22050_32">mp3 22.05kHz 32kbs</option>
+					<option value="mp3_24000_48">mp3 24kHz 48kbs</option>
+					<option selected="true" value="mp3_44100_128">mp3 44.1kHz 128kbs</option>
+					<option value="mp3_44100_192">mp3 44.1kHz 192kbs</option>
+					<option value="mp3_44100_32">mp3 44.1kHz 32kbs</option>
+					<option value="mp3_44100_64">mp3 44.1kHz 64kbs</option>
+					<option value="mp3_44100_96">mp3 44.1kHz 96kbs</option>
+				</select>
+			</div>
+			<div>
+				<button onclick="generate.generateConversation()">Generate ▶</button>
+				<span title="Generate automatically once assigned from the queue">
+					<input type="checkbox" id="autoGenerate" onchange="config.onChangeAutoGenerate(event)" />
+					<label for="autoGenerate">Generate automatically</label>
+				</span>
+			</div>
+			<progress value="0" max="1" class="full-width" id="generateConversationProgress"></progress>
+			<textarea disabled readonly placeholder="Status" id="generateConversationStatus" class="no-manual-resize"></textarea>
+
+			<div>
+				<audio controls controlsList="nofullscreen" id="dialoguePlayback" onplaying="playback.onAudioPlaybackStarted()" onended="playback.onAudioPlaybackEnded()" class="full-width" />
+			</div>
+			<div>
+				<canvas id="waveformDisplay" class="audio-canvas" />
+			</div>
+			<div>
+				<input type="checkbox" id="autoPlay" onchange="config.onChangeAutoPlay(event)" />
+				<label for="autoPlay">Autoplay</label>
+				<span title="Prevent autoplay if noise is suspected at the start of the audio">
+					<input type="checkbox" id="detectNoise" onchange="config.onChangeDetectNoise(event)" />
+					<label for="detectNoise">Detect noise</label>
+				</span>
+				<span title="Higher value = pass louder noise; default=680">
+					<input type="number" id="noiseTreshold" name="integer_number" step="1" min="0" max="" value="10" class="noise-treshold-number" onchange="config.onChangeNoiseTreshold(event)" />
+					<label for="noiseTreshold">treshold</label>
+				</span>
+				<label id="noiseIndicator"></label>
+			</div>
+			<div>
+				<canvas id="animationDisplay" class="animation-display" />
+			</div>
+		</div>
+	</div>
+	<div>
+		<div>
+			<label for="speakersDropdown">Existing speakers</label>
+			<select id="speakersDropdown" onchange="speakerEditor.onSelected(event)"></select>
+		</div>
+		<input type="text" title="One or more aliases for this speaker, as will appear in requests, separated with a comma" placeholder="Aliases (separated with ,)" id="aliasesEdit" class="full-width no-manual-resize" ></textarea>
+		<input type="text" title="The exact voice ID, as appears in ElevenLabs console, to be used for this speaker" placeholder="Voice ID" id="voiceEdit" class="full-width no-manual-resize" ></textarea>
+		<div>
+			<label for="portraitInput">Portrait</label>
+			<input type="file" accept="image/*" id="portraitInput" onchange="speakerEditor.uploadPortrait(event)" />
+			<img id="portraitDisplay" src="#" />
+		</div>
+		<button onclick="speakerEditor.addSpeaker()">Add/Replace speaker</button>
+	</div>
+	<div>
+		<br/>
+		<div>
+			<label for=""saveButton" >Save configuration</label>
+			<button id="saveButton" onclick="config.download()">⬇💾</button>
+		</div>
+		<div>
+			<label for="configInput">Restore configuration ⬆💾</label>
+			<input type="file" accept=".json" id="configInput" onchange="config.upload(event)" />
+		</div>
+	</div>
+</body>
+<script>
+const speakerEditor = {
+	updateSpeakersDropdown() {
+		const names = [];
+		for(const speaker of config.data.speakers) {
+			names.push(speaker.aliases[0]);
+		}
+
+		const speakersDropdown = document.getElementById('speakersDropdown');
+
+		speakersDropdown.length = 0;
+		const emptyOption = document.createElement('option');
+		emptyOption.value = null;
+		emptyOption.textContent = '---';
+		speakersDropdown.appendChild(emptyOption);
+
+		names.sort();
+		for(const name of names) {
+			const option = document.createElement('option');
+			option.value = name;
+			option.textContent = name;
+			speakersDropdown.appendChild(option);
+		}
+	},
+	addSpeaker() {
+		const aliases = document.getElementById('aliasesEdit').value.split(',');
+		if(aliases.length == 0 || aliases[0].trim().length == 0) {
+			return;
+		}
+
+		let applied = false;
+		for(const speaker of config.data.speakers) {
+			if(speaker.aliases.includes(aliases[0])) {
+				speaker.voiceId = document.getElementById('voiceEdit').value;
+				speaker.aliases = aliases;
+				speaker.portraitData = document.getElementById('portraitDisplay').src;
+				applied = true;
+				break;
+			}
+		}
+		if(!applied) {
+			config.data.speakers.push({
+				voiceId: document.getElementById('voiceEdit').value,
+				aliases: aliases,
+				portraitData: document.getElementById('portraitDisplay').src
+			});
+		}
+		config.saveInBrowser();
+		this.updateSpeakersDropdown();
+		animation.rebuildPortraitImageCache();
+	},
+	onSelected(event) {
+		let voiceId;
+		let aliasesAsString;
+		let portraitAsString;
+
+		for(const speaker of config.data.speakers) {
+			if(speaker.aliases.includes(event.target.value)) {
+				voiceId = speaker.voiceId;
+				aliasesAsString = config.allFormsOf(event.target.value).join(', ');
+				portraitAsString = speaker.portraitData;
+			}
+		}
+		document.getElementById('voiceEdit').value = voiceId;
+		document.getElementById('aliasesEdit').value = aliasesAsString;
+		document.getElementById('portraitInput').value = '';
+		document.getElementById('portraitDisplay').src = portraitAsString? portraitAsString : '#';
+	},
+	uploadPortrait(event) {
+		const file = event.target.files[0];
+		const display = document.getElementById('portraitDisplay');
+
+		if (file && file.type.startsWith('image/')) {
+			const reader = new FileReader();
+			reader.onload = function(e) {
+				display.src = e.target.result;
+			};
+			reader.readAsDataURL(file);
+		}
+		else {
+			display.src = '#';
+			alert('Unable to use the provided file as image');
+		}
+	}
+};
+
+const config = {
+	data : { // this data is edited via GUI and is saved as part of the current configuration
+		speakers : [
+			{
+				aliases: ['roger'],
+				voiceId: 'CwhRBWXzGAHq8TQ4Fs17'
+			},
+			{
+				aliases: ['sarah'],
+				voiceId: 'EXAVITQu4vr4xnSDxMaL'
+			},
+			{
+				aliases: ['laura'],
+				voiceId: 'FGY2WhTYpPnrIDTdsKH5'
+			}
+		],
+		autoTakeQueue: false,
+		autoGenerate: false,
+		autoPlay: false,
+		noiseDetection : {
+			enabled: false,
+			sampleDuration : 0.5, // seconds
+			treshold : document.getElementById('noiseTreshold').value // Max allowed amplitude/time at the beginning of the audio
+		},
+		generation: {
+			model: 'eleven_v3',
+			stability: 0.5,
+			audioFormat: 'mp3_44100_128',
+		}
+	},
+	fixedData: { // this data is not editable via GUI nor is it exported with the config; edit it here instead and reload the page
+		API_KEY : '', // keep this P R I V A T E
+		animation: {
+			backgroundColor: '#00B140',
+			handle: {
+				font: 'bold 30px Open Sans',
+				fill: 'yellow',
+				stroke: 'black',
+				strokeWidth: 3,
+				offset: {
+					x: 10,
+					y: 10
+				},
+			},
+			portrait: {
+				offset: {
+					x: 10,
+					y: 30
+				},
+				rectSize: {
+					w: (400 - 10 - 10), // canvas width minus border on two sides
+					h: (400 - 30 - 10 - 10) // canvas height minus top offset minus border at the bottom minus room for the animation
+				},
+			},
+			silenceTreshold: 4,
+			jump: 10
+		}
+	},
+	makeNamesLowerCase() {
+		for(var i = 0; i < this.data.speakers.length; ++i) {
+			const speaker = this.data.speakers[i];
+			for(var j = 0; j < speaker.aliases.length; ++j) {
+				speaker.aliases[j] = speaker.aliases[j].toLowerCase();
+			}
+		}
+	},
+	shortestNameLen() {
+		if(!this.shortestNameLen.cached) {
+			this.shortestNameLen.cached = Number.MAX_SAFE_INTEGER;
+			for(const variant of this.allFormsAllNames()) {
+				this.shortestNameLen.cached = Math.min(this.shortestNameLen.cached, variant.length);
+			}
+		}
+		return this.shortestNameLen.cached;
+	},
+	longestNameLen() {
+		if(!this.longestNameLen.cached) {
+			this.longestNameLen.cached = 0;
+			for(const variant of this.allFormsAllNames()) {
+				this.longestNameLen.cached = Math.max(this.longestNameLen.cached, variant.length);
+			}
+		}
+		return this.longestNameLen.cached;
+	},
+	allFormsAllNames() {
+		this.makeNamesLowerCase();
+		let all = [];
+		for(const speaker of this.data.speakers) {
+			all.push(...speaker.aliases);
+		}
+		return all;
+	},
+	allFormsOf(name) {
+		this.makeNamesLowerCase();
+		const ret = [];
+		for(const speaker of this.data.speakers) {
+			if(speaker.aliases.includes(name)) {
+				ret.push(...speaker.aliases);
+				break;
+			}
+		}
+		return ret;
+	},
+	normaliseName(name) {
+		this.makeNamesLowerCase();
+		for(const speaker of this.data.speakers) {
+			if(speaker.aliases.includes(name)) {
+				return speaker.aliases[0];
+			}
+		}
+		log.error(`Normal form requested for an unknown name ${name}`);
+		return this.data.speakers[0].aliases[0];
+	},
+	findVoiceForName(name) {
+		this.makeNamesLowerCase();
+		for(const speaker of this.data.speakers) {
+			if(speaker.aliases.includes(name)) {
+				return speaker.voiceId;
+			}
+		}
+		log.error(`Voice id requested for an unknown name ${name}`);
+		return this.data.speakers[0].voiceId;
+	},
+	findPortraitForVoice(voiceId) {
+		for(const speaker of this.data.speakers) {
+			if(speaker.voiceId == voiceId) {
+				return speaker.portraitData;
+			}
+		}
+		return null;
+	},
+	onChangeAutoQueue(event) {
+		this.data.autoTakeQueue = event.target.checked;
+		this.saveInBrowser();
+	},
+	onChangeAutoGenerate(event) {
+		this.data.autoGenerate = event.target.checked;
+		this.saveInBrowser();
+	},
+	onChangeAutoPlay(event) {
+		this.data.autoPlay = event.target.checked;
+		this.saveInBrowser();
+	},
+	onChangeDetectNoise(event) {
+		this.data.noiseDetection.enabled = event.target.checked;
+		this.saveInBrowser();
+	},
+	onChangeNoiseTreshold(event) {
+		this.data.noiseDetection.treshold = event.target.value;
+		this.saveInBrowser();
+		if(this.autoPlay) {
+			playback.triggerPlayback();
+		}
+	},
+	onChangeModel(event) {
+		this.data.generation.model = event.target.value;
+		this.saveInBrowser();
+	},
+	onChangeStability(event) {
+		this.data.generation.stability = event.target.value;
+		this.saveInBrowser();
+	},
+	onChangeFormat(event) {
+		this.data.generation.audioFormat = event.target.value;
+		this.saveInBrowser();
+	},
+	saveInBrowser() {
+		const confString = JSON.stringify(this.data);
+		localStorage.setItem("configData", confString);
+	},
+	loadInBrowser() {
+		const confString = localStorage.getItem("configData");
+		if(confString) {
+			try {
+				const dataObject = JSON.parse(confString);
+				Object.assign(this.data, dataObject);
+			}
+			catch(error) {
+				console.error(`Failed to resotre config: ${error}`);
+			}
+		}
+		config.applyValues();
+	},
+	download() {
+		const confString = JSON.stringify(this.data);
+		const dataBlob = new Blob([confString], {type: 'application/json'});
+
+		const link = document.createElement('a');
+		link.href = URL.createObjectURL(dataBlob);
+		link.download = 'SloppaEnabler.json';
+		link.click();
+		URL.revokeObjectURL(link.href);
+	},
+	async upload(event) {
+		const file = event.target.files[0];
+		if(!file) {
+			return;
+		}
+
+		try {
+			const text = await file.text();
+			const jobj = JSON.parse(text);
+			Object.assign(this.data, jobj);
+
+			console.log(`Succesfully uploaded config ${text}`);
+
+			this.saveInBrowser();
+		}
+		catch(error) {
+			console.error(`Failed to upload config: ${error}`);
+		}
+		event.target.value = '';
+
+		config.applyValues();
+		animation.rebuildPortraitImageCache();
+	},
+	applyValues() {
+		document.getElementById('autoQueue').checked = this.data.autoTakeQueue;
+		document.getElementById('autoGenerate').checked = this.data.autoGenerate;
+		document.getElementById('autoPlay').checked = this.data.autoPlay;
+		document.getElementById('detectNoise').checked = this.data.noiseDetection.enabled;
+		document.getElementById('noiseTreshold').value = this.data.noiseDetection.treshold;
+		//document.getElementById('modelsDropdown').value = this.data.generation.model;
+		document.getElementById('stabilityDropdown').value = this.data.generation.stability;
+		document.getElementById('formatDropdown').value = this.data.generation.audioFormat;
+
+		speakerEditor.updateSpeakersDropdown();
+	}
+};
+config.loadInBrowser();
+
+const queue = {
+	isBeingRearranged: false,
+	draggedItem: null,
+	onDrag(event) {
+		switch(event.type) {
+			case 'dragstart':
+				this.isBeingRearranged = true;
+				this.draggedItem = event.target;
+				event.dataTransfer.effectAllowed = 'move';
+				break;
+			case 'dragover':
+				event.preventDefault();
+				if(this.draggedItem) {
+					let destinationElement = event.target.closest('li');
+					if(destinationElement) {
+						if (event.offsetY < destinationElement.clientHeight / 2) {
+							destinationElement.parentNode.insertBefore(this.draggedItem, destinationElement);
+						} else {
+							destinationElement.parentNode.insertBefore(this.draggedItem, destinationElement.nextSibling);
+						}
+					}
+					else {
+						event.target.prepend(this.draggedItem);
+					}
+				}
+				break;
+			case 'dragend':
+				event.preventDefault();			
+				this.isBeingRearranged = false;
+				break;
+		}
+	},
+	onConversationEditKeydown(event) {
+		if(event.ctrlKey && event.key === 'Enter') {
+			event.preventDefault();
+			this.acceptItem();
+		}
+	},
+	acceptItem() {
+		const input = document.getElementById('queueConversationEdit');
+
+		let text = textProcess.removeInvisibleCharacters(input.value);
+		let author;
+		[author, text] = textProcess.splitAuthor(text);
+		text = (author? author : '') + '\n' + textProcess.removeAllAts(text);
+
+		const timeString = new Date().toLocaleTimeString('en-US', {
+			hour: 'numeric',
+			minute: 'numeric',
+			hour12: false
+		});
+
+		const li = document.createElement('li');
+		li.textContent = `${text.substring(0, 30)} … ${timeString}`;
+		li.title = text;
+		li.exactSourceText = text;
+		li.draggable = true;
+
+		const inputQueue = document.getElementById('inputQueue');
+		inputQueue.prepend(li);
+
+		input.value = null;
+	},
+	clearHistory() {
+		const history = document.getElementById('inputHistory');
+		history.innerHTML = '';
+	}
+};
+
+const textProcess = {
+	removeInvisibleCharacters(text) {
+		return text.replaceAll(/[\u200B-\u200D\uFEFF]/g, '');
+	},
+	splitAuthor(text) {
+		if(text[0] == '@') {
+			// In YT chat messages author appears at the beginning of the text as '@name\n'
+			const lineEndPos = text.search('\n');
+			const spacePos = text.search('/\s/');
+			if(lineEndPos != -1) {
+				if(spacePos == -1 || spacePos >= lineEndPos) {
+					return [text.slice(0, lineEndPos), text.slice(lineEndPos).trim()];
+				}
+			}
+		}
+		return [null, text];
+	},
+	removeAllAts(text) {
+		return text.replaceAll(/@[^\s]+/g, '');
+	},
+	cleanText(text) {
+		text = this.removeAllAts(text);
+		return text;
+	},
+	anyWordsMatch(text1, text2) {
+		const words1 = text1.trim().split(/\s+/);
+		const words2 = text2.trim().split(/\s+/);
+		for (let word of words1) {
+			if (words2.includes(word)) {
+				return true; // Shared word found
+			}
+		}
+		return false;
+	},
+	matchNameExact(text) {
+		// check all names exactly, return the longest match if any
+		let longestExactMatch = null;
+		for(const nameVariant of config.allFormsAllNames()) {
+			if(text.includes(nameVariant)) {
+				if(!longestExactMatch || nameVariant.length > longestExactMatch.length) {
+					longestExactMatch = nameVariant;
+				}
+			}
+		}
+		if(longestExactMatch)
+		{
+			return longestExactMatch;
+		}
+		return null;
+	},
+	levenshteinDistance(s1, s2) {
+		const len1 = s1.length;
+		const len2 = s2.length;
+		const matrix = [];
+
+		for (let i = 0; i <= len1; i++) {
+			matrix[i] = [i];
+		}
+		for (let j = 0; j <= len2; j++) {
+			matrix[0][j] = j;
+		}
+
+		for (let i = 1; i <= len1; i++) {
+			for (let j = 1; j <= len2; j++) {
+				const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+				matrix[i][j] = Math.min(
+					matrix[i - 1][j] + 1, // deletion
+					matrix[i][j - 1] + 1, // insertion
+					matrix[i - 1][j - 1] + cost // substitution
+				);
+			}
+		}
+
+		return matrix[len1][len2];
+	},
+	matchNameFuzzy(text) {
+		const candidateNames = [];
+		for(const nameVariant of config.allFormsAllNames()) {
+			if(this.anyWordsMatch(text, nameVariant)) {
+				candidateNames.push(nameVariant);
+			}
+		}
+
+		if(candidateNames.length == 1) {
+			return name;
+		}
+
+		// search from the end backwards
+		var startPointer = text.length - (config.shortestNameLen() / 2);
+		const matchMap = new Map();
+		let closestDist = Number.MAX_SAFE_INTEGER;
+		while(startPointer >= 0) {
+			const textFragment = text.substring(startPointer);
+			for(const name of candidateNames) {
+				const dist = this.levenshteinDistance(textFragment, name) / name.length;
+				if(!matchMap.has(name) || matchMap[name] > dist) {
+					matchMap.set(name, dist);
+					closestDist = Math.min(closestDist, dist);
+				}
+			}
+			startPointer -= 1;
+		}
+		if(matchMap.length == 1) {
+			return matchMap.keys().next().value;
+		}
+
+		return null;
+	},
+	calculateLengthConsumedToName(text, name) {
+		const allForms = config.allFormsOf(name);
+		const allNameWords = allForms.join(' ');
+		const textWords = text.split(' ');
+		let removedLength = 0;
+		for(let i = textWords.length - 1; i >= 0; i--) {
+			if(this.anyWordsMatch(textWords[i], allNameWords)) {
+				removedLength += textWords[i].length + 1;
+			}
+			else {
+				break;
+			}
+		}
+		return Math.min(removedLength, text.length);
+	},
+	// This function is designed to serve as part of the mechanism that splits a text into character names and the text they are supposed to speak
+	// It takes a frament of text supposedly ending with a name (and optional ':' after it), matches and returns a known name, if any, and the length it occupies in the text
+	// If no name can be identified it returns [null, 0]
+	matchName(text) {
+		let consumed = 0;
+		if(text[text.length - 1] == ':') {
+			text = text.slice(0, -1);
+			consumed = 1;
+		}
+		text = text.toLowerCase();
+		if(text.length > config.longestNameLen() * 2) {
+			text = text.substring(text.length - config.longestNameLen() * 2);
+		}
+		const forbiddenChars = '.,!?/\\<>[]:;'; // Chars that never appear inside a name
+		for(let i = text.length - 1; i >= 0; i--) {
+			if(forbiddenChars.includes(text[i])) {
+				text = text.slice(i + 1);
+				break;
+			}
+		}
+
+		{
+			const name = this.matchNameExact(text);
+			if(name) {
+				return [name, consumed + name.length];
+			}
+		}
+
+		const name = this.matchNameFuzzy(text);
+		if(name) {
+			return [name, consumed + this.calculateLengthConsumedToName(text, name)];
+		}
+
+		return [null, 0];
+	},
+	// This function is designed to serve as part of the mechanism that splits text into character names and the text they are supposed to speak
+	// It takes a fragment of dialog text supposedly starting with a name, a colon after it, and then the text to be spoken, and then the rest of the dialog afterwards
+	// It returns an object with the identified character name and their part of text, and length of the text consumed
+	// If required parts cannot be identified it returns [null, 0]
+	splitNextSide(text) {
+		const firstColonPos = text.indexOf(':');
+		if(firstColonPos == -1) {
+			return [null, 0];
+		}
+		let [name1, consumedLength] = this.matchName(text.substring(0, firstColonPos + 1));
+		if(!name1) {
+			// Unable to parse the text the way it is, correction is neccessary
+			return [null, 0];
+		}
+		let end = text.length;
+
+		let searchIndex = firstColonPos + 1;
+		while(true) {
+			// locate possible next name before the end of text
+			const secondColonPos = text.indexOf(':', searchIndex);
+			if(secondColonPos != -1) {
+				// identify name before the second :
+				let [name2, consumedLength] = this.matchName(text.substring(firstColonPos + 1, secondColonPos));
+				if(!name2) {
+					// this is not a name or is completely unrecognizeable as one
+					searchIndex = secondColonPos + 1;
+					continue;
+				}
+				else {
+					// everything ater the first : and before second name is the part text
+					end = secondColonPos - consumedLength;
+					break;
+				}
+			}
+			else {
+				break;
+			}
+		}
+
+		const side = {
+			name : config.normaliseName(name1),
+			text : text.substring(firstColonPos + 1, end).trim().replaceAll('\r\n\r\n', '\r\n').replaceAll('\r\r', '\r').replaceAll('\n\n', '\n')
+		}
+		return [side, end];
+	},
+	// This function is designed to serve as part of the mechanism that splits text into character names and the text they are supposed to speak
+	// It takes a text describing a conversation in the form "@author character1: text to speak character2: text to speak ..." and breaks it down into separate sides with normaized names
+	// Returned is an array of parsed sides, and/or any remaining text that the function could not parse
+	conversationFromText(text) {
+		let author;
+		[author, text] = this.splitAuthor(text);
+		text = this.cleanText(text);
+		const conversation = [];
+		conversation.author = author;
+		while(true) {
+			let [side, consumedLength] = this.splitNextSide(text);
+			if(!side) {
+				conversation.unconsumedText = text;
+				break;
+			}
+			conversation.push(side);
+			text = text.substring(consumedLength);
+		}
+		return conversation;
+	}
+};
+
+const generate = {
+	processNextFromQueue() {
+		if(document.activeElement) {
+			if(document.activeElement == document.getElementById('generateConversationEdit')) {
+				console.log("Process next from queue blocked because conversation editor is in use");
+				return;
+			}
+		}
+
+		if(queue.isBeingRearranged) {
+			console.log("Process next from queue blocked because queue is being rearranged");
+			return;
+		}
+
+		const edit = document.getElementById("generateConversationEdit");
+		const list = document.getElementById("inputQueue");
+		const entry = list.lastElementChild;
+		if(entry) {
+			edit.value = entry.exactSourceText;
+			if(config.data.autoGenerate) {
+				console.log("Instructed to automatically generate");
+				this.generateConversation();
+			}
+
+			const history = document.getElementById('inputHistory');
+			history.prepend(entry); // automatically removed from the queue
+		}
+		else {
+			edit.value = null;
+		}
+	},
+	displayGenerationStatus(text) {
+		document.getElementById('generateConversationStatus').value = text;
+	},
+	displayGenerationProgress(progress) {
+		const clampedProgress = Math.min(Math.max(progress, 0), 1);
+		document.getElementById('generateConversationProgress').value = clampedProgress;
+	},
+	onGenerationDone(responseObj, conversation) {
+		this.displayGenerationProgress(1);
+		this.displayGenerationStatus(`Generating done, ready to play`);
+		playback.setupPlayback(responseObj, conversation);
+	},
+	onGenerationError(error) {
+		this.displayGenerationProgress(1);
+		this.displayGenerationStatus(`Generating failed with error: ${error}`);
+	},
+	formatParsedConversation(convo) {
+		let text = '';
+		if(convo.author) {
+			text += `${convo.author}\n`;
+		}
+		for(const side of convo) {
+			text += `${side.name}: ${side.text}\r\n\r\n`;
+		}
+		if(convo.unconsumedText) {
+			text += '\r\n\r\n❗\r\n' + convo.unconsumedText;
+		}
+		return text;
+	},
+	onProgress({ loaded, total }) {
+		if(total > 0) {
+			this.displayGenerationProgress(loaded / total);
+		}
+	},
+	onGenerateConversationEditKeydown(event) {
+		if(event.ctrlKey && event.key === 'Enter') {
+			event.preventDefault();
+			this.generateConversation();
+		}
+	},
+	generateConversation() {
+		if(!config.fixedData.API_KEY) {
+			this.displayGenerationStatus(`❗ No API_KEY configured`);
+			return;
+		}
+
+		const conversationText = document.getElementById('generateConversationEdit');
+		const conversation = textProcess.conversationFromText(conversationText.value);
+
+		conversationText.value = this.formatParsedConversation(conversation);
+
+		if(conversation.unconsumedText) {
+			this.displayGenerationStatus(`❗ Text can not be fully parsed`);
+			return;
+		}
+		
+		if(conversation.length > 0) {
+			this.displayGenerationProgress(0);
+			this.displayGenerationStatus(`Generating a conversation of ${conversation.length} sides`);
+			
+			requestElevenlabs.requestDialogueFromServer(conversation, config.fixedData.API_KEY, this.onProgress)
+			.then(responseObj => this.onGenerationDone(responseObj, conversation))
+			.catch(error => this.onGenerationError(error));
+		}
+		else {
+			this.displayGenerationStatus(`Nothing to generate`);
+		}
+	}
+};
+
+const requestElevenlabs = {
+	delay_requests: 0,
+	delay(ms) {
+		return new Promise(resolve => setTimeout(resolve, ms));
+	},
+	formatError422(errorDetail) {
+		let message = 'Server reported "unprocessable entries":\n';
+		for(const entry of errorDetail) {
+			message += `location='${entry.loc}' ${entry.msg} type='${entry.type}'\n`
+		}
+	},
+	throwPostErrors(errorData) {
+		if(errorData.detail.status == 422) {
+			throw new Error(this.formatError422(errorData.detail) + '\nPlease review and correct the input data.');
+		}
+		else if(errorData.detail.status == 429) {
+			this.delay_requests += 200;
+			throw new Error(`Rejected by server because of too many requests. Delay adjusted. Please retry.`);
+		}
+		throw new Error(`API error: ${errorData.detail.status} message: ${errorData.detail.message || response.statusText}`);
+	},
+	// Returns a string, identifying an AI model, supported by elevenlabs
+	chooseModel() {
+		return 'eleven_v3'; // Models before V3 cannot be used for conversations
+		//return document.getElementById('modelsDropdown').value;
+	},
+	// Returns a string, identifying a format, supported by elevenlabs
+	chooseAudioFormat() {
+		return document.getElementById('formatDropdown').value;
+	},
+	chooseStability() {
+		return document.getElementById('stabilityDropdown').value;
+	},
+	async requestDialogueFromServer(dialogue, apiKey, progressCallback)
+	{
+		await this.delay(this.delay_requests);
+
+		// TODO optional cache +override; same exact request should return same exact audio, saving time, traffic and tokens
+		const inputs = [];
+		for(const side of dialogue) {
+			inputs.push({
+				'text': side.text,
+				'voice_id': config.findVoiceForName(side.name)
+			});
+		}
+		const data = {
+			'inputs': inputs,
+			'model_id': this.chooseModel(),
+			'settings': {
+				'stability': this.chooseStability()
+			}
+		};
+		
+		const headers = {
+			'xi-api-key': apiKey,
+			'Content-Type': 'application/json'
+		};
+		
+		const TTD_URL = `https://api.elevenlabs.io/v1/text-to-dialogue/with-timestamps?output_format=${this.chooseAudioFormat()}`;
+
+		console.log(`Requesting ${TTD_URL} with data: ${JSON.stringify(data)}`);
+
+		try {
+			const response = await fetch(TTD_URL, {
+				method: 'POST',
+				headers: headers,
+				body: JSON.stringify(data)
+			});
+			
+			if(!response.ok) {
+				const errorData = await response.json();
+				this.throwPostErrors(errorData);
+			}
+
+			this.delay_requests = Math.max(this.delay_requests - 100, 0);
+
+			var responseText;
+			if(progressCallback) {
+				const contentLength = response.headers.get('content-length');
+				if (contentLength === null) {
+					console.log('No content-length header');
+				}
+				const total = parseInt(contentLength, 10) || 0;
+				let loaded = 0;
+
+				const chunks = [];
+				for await (const chunk of response.body) {
+					chunks.push(chunk);
+					loaded += chunk.byteLength;
+					progressCallback({ loaded, total });
+				}
+				const finalBuffer = new Uint8Array(loaded);
+				let offset = 0;
+				chunks.forEach(chunk => {
+					finalBuffer.set(chunk, offset);
+					offset += chunk.length;
+				});
+				const decoder = new TextDecoder('utf-8');
+				responseText = decoder.decode(finalBuffer);
+			}
+			else {
+				responseText = await response.json();
+			}
+
+			let responseObj;
+			try {
+				responseObj = JSON.parse(responseText);
+			}
+			catch(error) {
+				console.error(`Error parsing response: ${error}`);
+			}
+			
+			const characterCount = response.headers.get('x-character-count');
+			return responseObj;
+		}
+		catch(error) {
+			console.error("Error while generating speech:", error);
+			throw error;
+		}
+		
+		return null;
+	}
+};
+
+const playback = {
+	async decodeAudio(audioBlob) {
+		if(audioBlob) {
+			const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+			if(audioCtx) {
+				const arrayBuffer = await audioBlob.arrayBuffer();
+				return audioCtx.decodeAudioData(arrayBuffer);
+			}
+		}
+		return null;
+	},
+	async drawSpectrogram(audioBuffer, canvas) {
+		canvas.width = canvas.clientWidth;
+		canvas.height = canvas.clientHeight;
+		const ctx = canvas.getContext('2d');
+		ctx.translate(0, canvas.height);
+		ctx.scale(1, -1);
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		if(audioBuffer) {
+			const channelData = audioBuffer.getChannelData(0);
+
+			const numSamples = channelData.length;
+			const sampleStep = Math.floor(numSamples / canvas.width);
+
+			function drawPixel(x, y, value) {
+				ctx.fillStyle = `rgb(${value}, ${value}, ${value})`;
+				ctx.fillRect(x, y, 1, 1);
+			}
+
+			const windowSize = 32;
+			const frequencyBins = windowSize / 2;
+			function canvasYToSpectrumIdx(y) {
+				return Math.floor(y * (frequencyBins / canvas.height));
+			}
+			for (let x = 0; x < canvas.width; x++) {
+				const spec = fft.spectrum(channelData, x * sampleStep, windowSize);
+
+				for (let y = 0; y < canvas.height; y++) {
+					drawPixel(x, y, 255 - spec[canvasYToSpectrumIdx(y)] * 255);
+				}
+			}
+		}
+	},
+	checkForNoise(audioBuffer) {
+		if(audioBuffer) {
+			// Naive noise detection
+			const interestingSamples = audioBuffer.sampleRate * config.data.noiseDetection.sampleDuration;
+			let overallVolumeGrowthRate = 0;
+			for(let i = 0; i < audioBuffer.numberOfChannels; ++i) {
+				const channelData = audioBuffer.getChannelData(0);
+				for(let s = 0; s < interestingSamples; ++s) {
+					const time = s / audioBuffer.sampleRate;
+					if(time > 0) {
+						const rate = Math.abs(channelData[s]) / time;
+						overallVolumeGrowthRate = Math.max(overallVolumeGrowthRate, rate);
+						if(overallVolumeGrowthRate > config.data.noiseDetection.treshold) {
+							console.log(`Detected volume growth: ${overallVolumeGrowthRate}`);
+							return false;
+						}
+					}
+				}
+			}
+			console.log(`Measured volume growth: ${overallVolumeGrowthRate}`);
+		}
+		return true;
+	},
+	async setupPlayback(responseObj, conversation) {
+		const response = await fetch(`data:audio/mpeg;base64,${responseObj.audio_base64}`);
+		let currentAudioBlob = await response.blob();
+
+		const dialoguePlayback = document.getElementById('dialoguePlayback');
+		const audioUrl = URL.createObjectURL(currentAudioBlob);
+		dialoguePlayback.src = audioUrl;
+		dialoguePlayback.title = `slop-${Date.now()}.mp3`;
+		dialoguePlayback.timingData = responseObj.voice_segments;
+		dialoguePlayback.conversation = conversation;
+
+		this.decodeAudio(currentAudioBlob).then(audioBuffer => {
+			this.triggerPlayback(audioBuffer);
+		});
+	},
+	triggerPlayback(audioBuffer) {
+		const canvas = document.getElementById('waveformDisplay');
+		this.drawSpectrogram(audioBuffer, canvas);
+
+		const noiseOk = this.checkForNoise(audioBuffer);
+		if(config.data.autoPlay && (noiseOk || !config.data.noiseDetection.enabled)) {
+			dialoguePlayback.play();
+		}
+		const noiseIndicator = document.getElementById('noiseIndicator');
+		noiseIndicator.textContent = noiseOk? '🟢':'❗';
+	},
+	onAudioPlaybackStarted() {
+		animation.animateAudioPlayback();
+	},
+	onAudioPlaybackEnded() {
+		console.log('Playback ended');
+		if(config.data.autoTakeQueue) {
+			console.log('Instructed to auto queue next request');
+			generate.processNextFromQueue();
+		}
+	}
+};
+
+const fft = {
+	bitReverse(x, bits) {
+		var y = x & 0x0001;
+		for (var i=1; i < bits; i++) {
+			x >>= 1;
+			y <<= 1;
+			y |= x&0x0001;
+		}
+		return y;
+	},
+	fftSpectrum(audioData, start, windowWidth) {
+		data = audioData.slice(start, start + windowWidth);
+		var n = data.length;
+		var bits = Math.ceil(Math.log2(n));
+
+		var real = data;
+		var imag = new Float32Array(n).fill(0);
+
+		for (let j = 0; j < n; ++j) {
+			let k = this.bitReverse(j, bits);
+			if (k > j) {
+				[real[j], real[k]] = [real[k], real[j]];
+				[imag[j], imag[k]] = [imag[k], imag[j]];
+			}
+		}
+
+		for (let s = 1; s <= bits; ++s) {
+			let m = 1 << s;
+			let half_m = m >> 1;
+			let delta_theta = -(2 * Math.PI) / m;
+
+			for (let k = 0; k < half_m; ++k) {
+				let theta_k = k * delta_theta;
+				let cos_theta = Math.cos(theta_k);
+				let sin_theta = Math.sin(theta_k);
+
+				for (let r = k; r < n; r += m) {
+					let targetIndex = r + half_m;
+					let tr = real[targetIndex],
+						ti = imag[targetIndex];
+
+					let Wreal = tr * cos_theta - ti * sin_theta;
+					let Wimaginary = tr * sin_theta + ti * cos_theta;
+
+					real[targetIndex] = real[r] - Wreal;
+					imag[targetIndex] = imag[r] - Wimaginary;
+					real[r] += Wreal;
+					imag[r] += Wimaginary;
+				}
+			}
+		}
+
+		let maxMagnitude = 0;
+		let spectrum = real.map((real, idx) => {
+			const r = real / n;
+			const im = imag[idx] / n; 
+			const magnitude = Math.sqrt(r * r + im * im);
+			maxMagnitude = Math.max(magnitude, maxMagnitude);
+			return magnitude;
+		});
+		spectrum = spectrum.map(val => val / maxMagnitude);
+		return spectrum;
+	},
+	spectrum(audioData, start, windowWidth) {
+		let spectrum = this.fftSpectrum(audioData, start, windowWidth);
+		return spectrum;
+	}
+};
+
+const animation = {
+	portraitImageCache: {},
+	rebuildPortraitImageCache() {
+		for(const speaker of config.data.speakers) {
+			const id = speaker.voiceId;
+			if(!(id in this.portraitImageCache) || this.portraitImageCache[id].src != speaker.portraitData) {
+				let img = new Image();
+				if(speaker.portraitData) {
+					img.src = speaker.portraitData;
+				}
+				this.portraitImageCache[id] = img;
+			}
+		}
+	},
+	draw(authorHandle, voice, audioAmplitude) {
+		const canvas = document.getElementById('animationDisplay');
+		canvas.width = canvas.clientWidth;
+		canvas.height = canvas.clientHeight;
+		const ctx = canvas.getContext('2d');
+		
+		this.clearCanvas(ctx);
+
+		this.drawAuthorHandle(ctx, authorHandle);
+		if(voice) {
+			this.drawPortrait(ctx, this.portraitImageCache[voice], audioAmplitude);
+		}
+	},
+	clearCanvas(ctx) {
+		ctx.fillStyle = config.fixedData.animation.backgroundColor;
+		ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+	},
+	drawAuthorHandle(ctx, handle) {
+		if(handle) {
+			ctx.save();
+			ctx.font = config.fixedData.animation.handle.font;
+			ctx.fillStyle = config.fixedData.animation.handle.fill;
+			ctx.strokeStyle = config.fixedData.animation.handle.stroke;
+			ctx.lineWidth = config.fixedData.animation.handle.strokeWidth;
+			ctx.textAlign = "left";
+			ctx.textBaseline = "top";
+
+			ctx.strokeText(handle, config.fixedData.animation.handle.offset.x, config.fixedData.animation.handle.offset.y);
+			ctx.fillText(handle, config.fixedData.animation.handle.offset.x, config.fixedData.animation.handle.offset.y);
+			ctx.restore();
+		}
+	},
+	drawPortrait(ctx, image, audioAmplitude) {
+		ctx.save();
+		let yOffset = (audioAmplitude > config.fixedData.animation.silenceTreshold)? 0 : config.fixedData.animation.jump;
+		const scale = Math.min(config.fixedData.animation.portrait.rectSize.w / image.width, config.fixedData.animation.portrait.rectSize.h / image.height);
+		const scaledHeight = image.height * scale;
+		yOffset += config.fixedData.animation.portrait.rectSize.h - scaledHeight;
+		ctx.drawImage(image, config.fixedData.animation.portrait.offset.x, config.fixedData.animation.portrait.offset.y + yOffset, image.width * scale, image.height * scale);
+		ctx.restore();
+	},
+	speakerForTime(timingData, time) {
+		let voiceId;
+		for(let segment of timingData) {
+			if(time < segment.start_time_seconds) {
+				break;
+			}
+			else if(time < segment.end_time_seconds) {
+				voiceId = segment.voice_id;
+				break;
+			}
+		}
+		return voiceId;
+	},
+	animateAudioPlayback() {
+		const elem = document.getElementById('dialoguePlayback');
+
+		if(elem.paused && elem.currentTime == elem.duration) {
+			this.draw('', 0);
+			return;
+		}
+
+		if(!elem.analyser) {
+			const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+			const track = audioCtx.createMediaElementSource(elem);
+			elem.analyser = audioCtx.createAnalyser();
+			track.connect(elem.analyser);
+			elem.analyser.connect(audioCtx.destination);
+			elem.analyser.fftSize = 1024;
+			elem.dataArray = new Uint8Array(elem.analyser.fftSize);
+		}
+		elem.analyser.getByteTimeDomainData(elem.dataArray);
+		let amplitude;
+		{
+			let sum = 0;
+			for (let i = 0; i < elem.dataArray.length; i++) {
+				const value = elem.dataArray[i] - 128; 
+				sum += Math.abs(value);
+			}
+			amplitude = sum / elem.dataArray.length;
+		}
+
+		// FIXME the timing data from the server identify speakers with their voice ids, whereas we use names(aliases), more than one of which might be associated with the same voice
+		// before sending a request we convert the names to voices, and that same correspondence can be used to recover the names here
+		const voiceId = this.speakerForTime(elem.timingData, elem.currentTime);
+		this.draw(elem.conversation.author, voiceId, amplitude);
+
+		requestAnimationFrame(() => this.animateAudioPlayback());
+	}
+}
+animation.rebuildPortraitImageCache();
+animation.draw('', 0);
+</script>
