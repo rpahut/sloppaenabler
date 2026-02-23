@@ -1,0 +1,9 @@
+{
+    "detail": {
+        "type": "not_found",
+        "code": "voice_not_found",
+        "message": "A voice with voice_id 'CwhRBWXzGAHq8TQ4Fs1' was not found.",
+        "status": "voice_not_found",
+        "request_id": "0eaa7e8daaa2e9fe0ff16d3e85c22f7a"
+    }
+}

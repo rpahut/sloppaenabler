@@ -1,0 +1,10 @@
+{
+    "detail": {
+        "type": "validation_error",
+        "code": "unsupported_model",
+        "message": "Model 'eleven_multilingual_v2' does not support dialogue.",
+        "status": "model_does_not_support_dialogue",
+        "request_id": "306011c568063f9f777cb176c2d2c564",
+        "param": "model_id"
+    }
+}

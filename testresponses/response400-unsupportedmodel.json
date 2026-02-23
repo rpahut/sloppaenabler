@@ -1,0 +1,10 @@
+{
+    "detail": {
+        "type": "validation_error",
+        "code": "unsupported_model",
+        "message": "Model 'eleven_flash_v2_5' does not support dialogue.",
+        "status": "model_does_not_support_dialogue",
+        "request_id": "d6d7b0cbb27129f31bdcc6043b3a1d72",
+        "param": "model_id"
+    }
+}
